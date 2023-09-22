@@ -194,7 +194,12 @@ unode_t* register_file( uint8_t type, char name[ 8 ], uint8_t flags, uint32_t bl
     if( !file ) fatal( "failed to register file: memory allocation error.\n" );
     file->fd_cdate = i_date( 9, 19, 2023, 13, 30, 3 );
     file->fd_mdate = i_date( 9, 19, 2023, 13, 31, 34 );
-    file->fd_size = blocks*4;
+    switch( type ) {
+        case FD_BIN:
+            blocks *= 4;
+            break;
+    }
+    file->fd_size = blocks;
     file->fd_flags = flags;
     STR_CPY( name, file->fd_name, 8 );
     file->fd_type = type;
@@ -273,13 +278,22 @@ int main( void ) {
     char* test_block_str2 = "testing2";
     unode_t* test_file1 = register_file( FD_BIN, "test1", 0, 1, &test_block_int );
     unode_t* test_file2 = register_file( FD_RTXT, "test2", 0, 8, test_block_str1 );
+    
     file_stat( test_file1 );
     printf( ">\n" );
+    
     fmod_block( test_file1, test_block_str2, 9 );
     fmod_attrib( test_file1, FMODA_CHG_TYPE, FD_RTXT, FMODA_NAME_NULL, FMODA_DATE_NULL, FMODA_DATE_NULL, FMODA_FLAGS_NULL );
     file_stat( test_file1 );
     printf( ">\n" );
+    
+    fmod_block( test_file1, &test_block_int, 1 );
+    fmod_attrib( test_file1, FMODA_CHG_TYPE, FD_EXEC, FMODA_NAME_NULL, FMODA_DATE_NULL, FMODA_DATE_NULL, FMODA_FLAGS_NULL );
+    file_stat( test_file1 );
+    printf( ">\n" );
+    
     file_stat( test_file2 );
+    
     unregister_file( test_file1 );
     unregister_file( test_file2 );
     return 0;
