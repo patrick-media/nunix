@@ -4,6 +4,15 @@
 #include<stdbool.h>
 #include<ctype.h>
 
+const char* sample_input = "lvr %r1, $0x02 ~~ send to GX registers\n"
+"lvrx %r12, $0x1 ~~ GX reg number\n"
+"sfl %r12, $0x10 ~~ shift left by 16 bits\n"
+"orx %r12, $0x2 ~~ 2 bytes of data\n"
+"lvrx %r15, $0xF0F0 ~~ data to send\n"
+"slvx ($0x200), %r15 ~~ store data\n"
+"lvrx %r13, $0x200 ~~ value for destination to point to\n"
+"int $0x2 ~~ GX interrupt";
+
 #define PAS_VERBOSE
 
 #ifdef PAS_VERBOSE
@@ -43,6 +52,21 @@ typedef enum {
     FMT_DF =   0b00000100
 } opcode_fmt_e;
 const char* op_fmt_str[ 4 ] = { "FMT_INVL", "FMT_R", "FMT_I", "FMT_DF" };
+typedef enum {
+    RFMT_INVL = 0,
+    RFMT_R,
+    RFMT_RI,
+    RFMT_IR,
+    RFMT_I,
+    RFMT_RDF,
+    RFMT_IDF,
+    RFMT_DFR,
+    RFMT_DFI,
+    RFMT_DF
+} opcode_rfmt_e;
+const char* op_rfmt_str[ 9 ] = { "RFMT_INVL", "RFMT_R", "RFMT_RI", "RFMT_IR",
+                                "RFMT_I", "RFMT_RDF", "RFMT_IDF", "RFMT_DFR",
+                                "RFMT_DFI", "RFMT_DF" };
 
 #define MAGIC_INSTR_START 16
 #define NUM_INSTR 47
@@ -584,6 +608,7 @@ int scan( void ) {
 }
 
 int main( int argc, char** argv ) {
+    /*
     if( argc != 2 ) {
         printf( "Invalid number of arguments: %d\n", argc );
         exit( 1 );
@@ -593,11 +618,14 @@ int main( int argc, char** argv ) {
         printf( "Failed to open file '%s'.\n", argv[ 1 ] );
         exit( 1 );
     }
+    */
     g_input = calloc( 4096, sizeof( *g_input ) );
     if( !g_input ) {
         printf( "input failed to allocate.\n" );
         exit( 1 );
     }
+    strcpy( g_input, sample_input );
+    /*
     char file_contents = fgetc( fp );
     int input_i = 0;
     while( file_contents != EOF ) {
@@ -606,6 +634,7 @@ int main( int argc, char** argv ) {
     }
     g_input[ input_i ] = 0;
     fclose( fp );
+    */
 
     int scan_result = scan();
 
@@ -619,12 +648,14 @@ int main( int argc, char** argv ) {
         int isp; // instruction syntax place
         int isp_max; // max place
         int operand; // operand place
-        opcode_fmt_e op_fmt; // format
+        char fmt_c[ 4 ]; // format
+        int fmt_p; // format char place
     } opcode;
     opcode.isp = 0;
     opcode.isp_max = -1;
     opcode.operand = 0;
-    opcode.op_fmt = FMT_INVL;
+    memset( &opcode.fmt_c, 0, 4 );
+    opcode.fmt_p = 0;
 
     while( scan_result ) {
         bool print_value = false;
@@ -636,11 +667,12 @@ int main( int argc, char** argv ) {
         }
         if( opcode.isp == opcode.isp_max ) {
             //printf( "opcode.isp reached max\n" );
-            printf( "opcode.op_fmt = %d (%s)\n", opcode.op_fmt, op_fmt_str[ opcode.op_fmt % 2 ] );
+            printf( "opcode.fmt_c = %s\n", opcode.fmt_c );
             opcode.isp = 0;
             opcode.isp_max = -1;
             opcode.operand = 0;
-            opcode.op_fmt = FMT_INVL;
+            memset( &opcode.fmt_c, 0, 4 );
+            opcode.fmt_p = 0;
             printf( "\n" );
             continue;
         }
@@ -649,7 +681,7 @@ int main( int argc, char** argv ) {
             case T_PERCENT:
             {
                 if( opcode.isp % 2 > 0 ) {
-                    opcode.op_fmt |= FMT_R;
+                    opcode.fmt_c[ opcode.fmt_p++ ] = 'R';
                 } else {
                     printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
                     exit( 1 );
@@ -666,7 +698,7 @@ int main( int argc, char** argv ) {
             case T_DOLLAR:
             {
                 if( opcode.isp % 2 > 0 ) {
-                    opcode.op_fmt |= FMT_I;
+                    opcode.fmt_c[ opcode.fmt_p++ ] = 'I';
                 } else {
                     printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
                     exit( 1 );
@@ -704,7 +736,8 @@ int main( int argc, char** argv ) {
             case T_LPAREN:
             {
                 if( opcode.isp % 2 > 0 ) {
-                    opcode.op_fmt |= FMT_DF;
+                    opcode.fmt_c[ opcode.fmt_p++ ] = 'D';
+                    opcode.fmt_c[ opcode.fmt_p++ ] = 'F';
                 } else {
                     printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
                     exit( 1 );
