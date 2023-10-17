@@ -4,6 +4,14 @@
 #include<stdbool.h>
 #include<ctype.h>
 
+#define PAS_VERBOSE
+
+#ifdef PAS_VERBOSE
+#define verbose( msg, ... ) printf( msg, __VA_ARGS__ );
+#else
+#define verbose( msg, ... )
+#endif // PAS_VERBOSE
+
 #define NUM_TOK_STR 60
 const char* tok_e_str[ NUM_TOK_STR ] = { "T_EOF", "T_PERCENT", "T_DOLLAR", "T_COMMA",
                             "T_RBRACKET", "T_LBRACKET", "T_RPAREN", "T_LPAREN", "T_PLUS",
@@ -23,60 +31,72 @@ const char* valid_regs[ NUM_REGS ] = { "r0", "r1", "r2", "r3", "r4",
 typedef struct {
     char* name;
     int id;
-    int numargs_isp;
+    int numargs_syntax;
+    // order:
+    // [0] R, [1] RI, [2] IR, [3] I, [4] RDF, [5] IDF, [6] DFR, [7] DFI, [8] DF
+    unsigned char opcode[ 9 ];
 } instr_t;
+typedef enum {
+    FMT_INVL = 0,
+    FMT_R =    0b00000001,
+    FMT_I =    0b00000010,
+    FMT_DF =   0b00000100
+} opcode_fmt_e;
+const char* op_fmt_str[ 4 ] = { "FMT_INVL", "FMT_R", "FMT_I", "FMT_DF" };
 
 #define MAGIC_INSTR_START 16
-#define NUM_INSTR 45
+#define NUM_INSTR 47
 instr_t instr[ NUM_INSTR ] = {
     // 0 no args
     // 2 one arg
     // 4 two args
     // 6 three args
-    { "lvr",  0, 4 },
-    { "lvrx", 1, 4 },
-    { "add",  2, 6 },
-    { "addx", 3, 6 },
-    { "sub",  4, 6 },
-    { "subx", 5, 6 },
-    { "mul",  6, 6 },
-    { "mulx", 7, 6 },
-    { "div",  8, 6 },
-    { "divx", 9, 6 },
-    { "lfp",  10, 4 },
-    { "lfpx", 11, 4 },
-    { "int",  12, 2 },
-    { "lpi",  13, 4 },
-    { "lpix", 14, 4 },
-    { "lpo",  15, 4 },
-    { "lpox", 16, 4 },
-    { "slv",  17, 4 },
-    { "slvx", 18, 4 },
-    { "vts",  19, 2 },
-    { "vtsx", 20, 2 },
-    { "vfs",  21, 2 },
-    { "vfsx", 22, 2 },
-    { "ret",  23, 2 },
-    { "jmp",  24, 2 },
-    { "jpr",  25, 2 },
-    { "jeq",  26, 2 },
-    { "jls",  27, 2 },
-    { "jgr",  28, 2 },
-    { "jle",  29, 2 },
-    { "jge",  30, 2 },
-    { "jzo",  31, 2 },
-    { "jcr",  32, 2 },
-    { "jne",  33, 2 },
-    { "com",  34, 4 },
-    { "comx", 35, 4 },
-    { "and",  36, 4 },
-    { "andx", 37, 4 },
-    { "or",   38, 4 },
-    { "orx",  39, 4 },
-    { "xor",  40, 4 },
-    { "xorx", 41, 4 },
-    { "sfr",  42, 4 },
-    { "sfrx", 43, 4 }
+    { "lvr",   0, 4, { 0x0, 0x1, 0, 0, 0, 0, 0, 0, 0 } },
+    { "lvrx",  1, 4, { 0x80, 0x81, 0, 0, 0, 0, 0, 0, 0 } },
+    { "add",   2, 6, { 0x2, 0x3, 0x4, 0x5, 0, 0, 0, 0, 0 } },
+    { "addx",  3, 6, { 0x82, 0x83, 0x84, 0x85, 0, 0, 0, 0, 0 } },
+    { "sub",   4, 6, { 0x6, 0x7, 0x8, 0x9, 0, 0, 0, 0, 0 } },
+    { "subx",  5, 6, { 0x86, 0x87, 0x88, 0x89, 0, 0, 0, 0, 0 } },
+    { "mul",   6, 6, { 0xA, 0xB, 0xC, 0xD, 0, 0, 0, 0, 0 } },
+    { "mulx",  7, 6, { 0x8A, 0x8B, 0x8C, 0x8D, 0, 0, 0, 0, 0 } },
+    { "div",   8, 6, { 0xE, 0xF, 0x10, 0x11, 0, 0, 0, 0, 0 } },
+    { "divx",  9, 6, { 0x8E, 0x8F, 0x90, 0x91, 0, 0, 0, 0, 0 } },
+    { "lfp",  10, 4, { 0, 0, 0, 0, 0x12, 0, 0, 0, 0 } },
+    { "lfpx", 11, 4, { 0, 0, 0, 0, 0x92, 0, 0, 0, 0 } },
+    { "int",  12, 2, { 0, 0, 0, 0x13, 0, 0, 0, 0, 0 } },
+    { "lpi",  13, 4, { 0x14, 0x15, 0, 0, 0, 0, 0, 0, 0 } },
+    { "lpix", 14, 4, { 0x94, 0x95, 0, 0, 0, 0, 0, 0, 0 } },
+    { "lpo",  15, 4, { 0, 0, 0x16, 0x17, 0, 0, 0, 0, 0 } },
+    { "lpox", 16, 4, { 0, 0, 0x96, 0x97, 0, 0, 0, 0, 0 } },
+    { "slv",  17, 4, { 0, 0, 0, 0, 0, 0, 0x18, 0x19, 0x1A } },
+    { "slvx", 18, 4, { 0, 0, 0, 0, 0, 0, 0x98, 0x99, 0x9A } },
+    { "vts",  19, 2, { 0x1B, 0, 0, 0x1C, 0, 0, 0, 0, 0x1D } },
+    { "vtsx", 20, 2, { 0x9B, 0, 0, 0x9C, 0, 0, 0, 0, 0x9D } },
+    { "vfs",  21, 2, { 0x1E, 0, 0, 0, 0, 0, 0, 0, 0x1F } },
+    { "vfsx", 22, 2, { 0x9E, 0, 0, 0, 0, 0, 0, 0, 0x9F } },
+    { "ret",  23, 2, { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF } },
+    { "jmp",  24, 2, { 0, 0, 0, 0xFE, 0, 0, 0, 0, 0 } },
+    { "jpr",  25, 2, { 0, 0, 0, 0xFD, 0, 0, 0, 0, 0 } },
+    { "jeq",  26, 2, { 0, 0, 0, 0xFC, 0, 0, 0, 0, 0 } },
+    { "jls",  27, 2, { 0, 0, 0, 0xFB, 0, 0, 0, 0, 0 } },
+    { "jgr",  28, 2, { 0, 0, 0, 0xFA, 0, 0, 0, 0, 0 } },
+    { "jle",  29, 2, { 0, 0, 0, 0xF9, 0, 0, 0, 0, 0 } },
+    { "jge",  30, 2, { 0, 0, 0, 0xF8, 0, 0, 0, 0, 0 } },
+    { "jzo",  31, 2, { 0, 0, 0, 0xF7, 0, 0, 0, 0, 0 } },
+    { "jcr",  32, 2, { 0, 0, 0, 0xF6, 0, 0, 0, 0, 0 } },
+    { "jne",  33, 2, { 0, 0, 0, 0xF5, 0, 0, 0, 0, 0 } },
+    { "com",  34, 4, { 0x20, 0x21, 0x23, 0x24, 0x22, 0x25, 0x26, 0x27, 0x28 } },
+    { "comx", 35, 4, { 0xA0, 0xA1, 0xA3, 0xA4, 0xA2, 0xA5, 0xA6, 0xA7, 0xA8 } },
+    { "and",  36, 4, { 0x29, 0x2A, 0x2C, 0x2D, 0x2B, 0x2E, 0x2F, 0x30, 0x31 } },
+    { "andx", 37, 4, { 0xA9, 0xAA, 0xAC, 0xAD, 0xAB, 0xAE, 0xAF, 0xB0, 0xB1 } },
+    { "or",   38, 4, { 0x32, 0x33, 0x35, 0x36, 0x34, 0x37, 0x38, 0x39, 0x3A } },
+    { "orx",  39, 4, { 0xB2, 0xB3, 0xB5, 0xB6, 0xB4, 0xB7, 0xB8, 0xB9, 0xBA } },
+    { "xor",  40, 4, { 0x3B, 0x3C, 0x3E, 0x3F, 0x3D, 0x40, 0x41, 0x42, 0x43 } },
+    { "xorx", 41, 4, { 0xBB, 0xBC, 0xBE, 0xBF, 0xBD, 0xC0, 0xC1, 0xC2, 0xC3 } },
+    { "sfl",  42, 4, { 0x44, 0x45, 0x46, 0x47, 0, 0, 0, 0, 0 } },
+    { "sflx", 43, 4, { 0xC4, 0xC5, 0xC6, 0xC7, 0, 0, 0, 0, 0 } },
+    { "sfr",  44, 4, { 0x48, 0x49, 0x4A, 0x4B, 0, 0, 0, 0, 0 } },
+    { "sfrx", 45, 4, { 0xC8, 0xC9, 0xCA, 0xCB, 0, 0, 0, 0, 0 } }
 };
 
 typedef enum {
@@ -138,8 +158,10 @@ typedef enum {
     /* 55 */ T_ORX,
     /* 56 */ T_XOR,
     /* 57 */ T_XORX,
-    /* 58 */ T_SFR,
-    /* 59 */ T_SFRX
+    /* 58 */ T_SFL,
+    /* 59 */ T_SFLX,
+    /* 60 */ T_SFR,
+    /* 61 */ T_SFRX
 } tok_e;
 
 #define G_SYMTABLE_MAX 512
@@ -271,6 +293,7 @@ void validate_label( char* s ) {
 int keyword( char* s ) {
     switch( *s ) {
         case 'a':
+        {
             if( strcmp( s, "add" ) == 0 ) {
                 //printf( "instruction = add\n" );
                 return T_ADD;
@@ -288,7 +311,9 @@ int keyword( char* s ) {
                 return T_ANDX;
             }
             break;
+        }
         case 'c':
+        {
             if( strcmp( s, "com" ) == 0 ) {
                 //printf( "instruction = com\n" );
                 return T_COM;
@@ -298,7 +323,9 @@ int keyword( char* s ) {
                 return T_COMX;
             }
             break;
+        }
         case 'd':
+        {
             if( strcmp( s, "div" ) == 0 ) {
                 //printf( "instruction = div\n" );
                 return T_DIV;
@@ -308,13 +335,17 @@ int keyword( char* s ) {
                 return T_DIVX;
             }
             break;
+        }
         case 'i':
+        {
             if( strcmp( s, "int" ) == 0 ) {
                 //printf( "instruction = int\n" );
                 return T_INT;
             }
             break;
+        }
         case 'j':
+        {
             if( strcmp( s, "jmp" ) == 0 ) {
                 //printf( "instruction = jmp\n" );
                 return T_JMP;
@@ -356,7 +387,9 @@ int keyword( char* s ) {
                 return T_JNE;
             }
             break;
+        }
         case 'l':
+        {
             if( strcmp( s, "lfp" ) == 0 ) {
                 //printf( "instruction = lpf\n" );
                 return T_LFP;
@@ -390,7 +423,9 @@ int keyword( char* s ) {
                 return T_LVRX;
             }
             break;
+        }
         case 'm':
+        {
             if( strcmp( s, "mul" ) == 0 ) {
                 //printf( "instruction = mul\n" );
                 return T_MUL;
@@ -400,7 +435,9 @@ int keyword( char* s ) {
                 return T_MULX;
             }
             break;
+        }
         case 'o':
+        {
             if( strcmp( s, "or" ) == 0 ) {
                 //printf( "instruction = or\n" );
                 return T_OR;
@@ -410,13 +447,25 @@ int keyword( char* s ) {
                 return T_ORX;
             }
             break;
+        }
         case 'r':
+        {
             if( strcmp( s, "ret" ) == 0 ) {
                 //printf( "instruction = ret\n" );
                 return T_RET;
             }
             break;
+        }
         case 's':
+        {
+            if( strcmp( s, "sfl" ) == 0 ) {
+                //printf( "instruction = sfl\n" );
+                return T_SFL;
+            }
+            if( strcmp( s, "sflx" ) == 0 ) {
+                //printf( "instruction = sflx\n" );
+                return T_SFLX;
+            }
             if( strcmp( s, "sfr" ) == 0 ) {
                 //printf( "instruction = sfr\n" );
                 return T_SFR;
@@ -434,7 +483,9 @@ int keyword( char* s ) {
                 return T_SLVX;
             }
             break;
+        }
         case 'v':
+        {
             if( strcmp( s, "vfs" ) == 0 ) {
                 //printf( "instruction = vfs\n" );
                 return T_VFS;
@@ -452,7 +503,9 @@ int keyword( char* s ) {
                 return T_VTSX;
             }
             break;
+        }
         case 'x':
+        {
             if( strcmp( s, "xor" ) == 0 ) {
                 //printf( "instruction = xor\n" );
                 return T_XOR;
@@ -462,6 +515,7 @@ int keyword( char* s ) {
                 return T_XORX;
             }
             break;
+        }
     }
     return 0;
 }
@@ -554,51 +608,86 @@ int main( int argc, char** argv ) {
     fclose( fp );
 
     int scan_result = scan();
+
     // 0 - instruction
     // 1 - first arg
     // 2 - comma (if applicable)
     // 3 - second arg
     // 4 - comma (if applicable)
     // 5 - third arg
-    // instruction_syntax_place
-    int isp = 0;
-    int isp_max = -1;
+    struct {
+        int isp; // instruction syntax place
+        int isp_max; // max place
+        int operand; // operand place
+        opcode_fmt_e op_fmt; // format
+    } opcode;
+    opcode.isp = 0;
+    opcode.isp_max = -1;
+    opcode.operand = 0;
+    opcode.op_fmt = FMT_INVL;
+
     while( scan_result ) {
         bool print_value = false;
         int print_value_type = 0;
-        printf( "isp = %d isp_max = %d\n", isp, isp_max );
-        if( isp == isp_max ) {
-            printf( "isp reached max\n" );
-            isp = 0;
-            isp_max = -1;
+        //printf( "opcode.isp = %d opcode.isp_max = %d\n", opcode.isp, opcode.isp_max );
+        if( opcode.operand > 2 ) {
+            printf( "Unhandled exception: opcode.operad > 2 token %d (%s)\n", g_token.tok, tok_e_str[ g_token.tok ] );
+            exit( 1 );
+        }
+        if( opcode.isp == opcode.isp_max ) {
+            //printf( "opcode.isp reached max\n" );
+            printf( "opcode.op_fmt = %d (%s)\n", opcode.op_fmt, op_fmt_str[ opcode.op_fmt % 2 ] );
+            opcode.isp = 0;
+            opcode.isp_max = -1;
+            opcode.operand = 0;
+            opcode.op_fmt = FMT_INVL;
+            printf( "\n" );
             continue;
         }
         char c;
         switch( g_token.tok ) {
             case T_PERCENT:
+            {
+                if( opcode.isp % 2 > 0 ) {
+                    opcode.op_fmt |= FMT_R;
+                } else {
+                    printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
+                    exit( 1 );
+                }
                 int scan_reg_result = scan_reg();
                 if( scan_reg_result < 0 ) {
                     printf( "Failed to find register.\n" );
                     exit( 1 );
                 }
-                //printf( "found register %d (%s)\n", scan_reg_result, valid_regs[ scan_reg_result ] );
-                printf( "%%%s\n", valid_regs[ scan_reg_result ] );
-                isp++;
+                verbose( "reg '%s'\n", valid_regs[ scan_reg_result ] );
+                opcode.isp++;
                 break;
+            }
             case T_DOLLAR:
+            {
+                if( opcode.isp % 2 > 0 ) {
+                    opcode.op_fmt |= FMT_I;
+                } else {
+                    printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
+                    exit( 1 );
+                }
                 print_value = true;
                 print_value_type = 1; // print int lit
                 g_token.val = scan_int( next() );
-                isp++;
+                opcode.isp++;
                 break;
+            }
             case T_COMMA:
-                if( isp == 2 || isp == 4 ) {
-                    isp++;
+            {
+                if( opcode.isp == 2 || opcode.isp == 4 ) {
+                    opcode.isp++;
                     break;
                 }
-                printf( "Comma found when not expected. isp = %d, isp_max = %d\n", isp, isp_max );
+                printf( "Comma found when not expected. opcode.isp = %d, opcode.isp_max = %d\n", opcode.isp, opcode.isp_max );
                 exit( 1 );
+            }
             case T_TILDE:
+            {
                 c = next();
                 if( c != '~' ) {
                     printf( "Invalid comment: '~~' expected, found '%c' as second character.\n", c );
@@ -609,9 +698,17 @@ int main( int argc, char** argv ) {
                 }
                 putback( c );
                 break;
+            }
             case T_LABEL:
                 break;
             case T_LPAREN:
+            {
+                if( opcode.isp % 2 > 0 ) {
+                    opcode.op_fmt |= FMT_DF;
+                } else {
+                    printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
+                    exit( 1 );
+                }
                 print_value = true;
                 print_value_type = 2; // print df lit
                 c = next();
@@ -627,29 +724,37 @@ int main( int argc, char** argv ) {
                     printf( "Invalid dereference token processed: '%c'\n", c );
                     exit( 1 );
                 }
-                isp++;
+                opcode.isp++;
                 break;
-            default: // be sure to handle every other case because this will apply to instructions
+            }
+            default:
+            {
+                //printf( "opcode.isp = %d\n", opcode.isp );
                 bool l_found = false;
                 for( int i = 0; i < NUM_INSTR-1; i++ ) {
                     if( ( g_token.tok - MAGIC_INSTR_START ) == instr[ i ].id ) {
-                        //printf( "accessing instruction %d '%s'...\n", i, instr[ i ].name );
-                        isp_max = instr[ i ].numargs_isp;
-                        isp++;
+                        opcode.isp_max = instr[ i ].numargs_syntax;
+                        opcode.isp++;
                         l_found = true;
+                        verbose( "instr %s\n", instr[ i ].name );
                         break;
                     }
                 }
                 if( l_found ) break;
                 printf( "Invalid instruction token found: %d\n", g_token.tok - MAGIC_INSTR_START );
                 exit( 1 );
+            }
         }
-        printf( "%s\n", tok_e_str[ g_token.tok ] );
-        //printf( "isp = %d\n", isp );
-        //printf( "isp_max = %d\n", isp_max );
+        //printf( "token %s\n", tok_e_str[ g_token.tok ] );
+        //printf( "opcode.isp = %d\n", opcode.isp );
+        //printf( "opcode.isp_max = %d\n", opcode.isp_max );
         if( print_value ) {
-            if( print_value_type == 1 ) printf( "$%d\n", g_token.val );
-            else if( print_value_type == 2 ) printf( "0x%x\n", g_token.val );
+            if( print_value_type == 1 ) {
+                verbose( "lit %d | 0x%X\n", g_token.val, g_token.val );
+            }
+            else if( print_value_type == 2 ) {
+                verbose( "addr 0x%x\n", g_token.val );
+            }
             else {
                 printf( "Error attempting to print int value: %d | 0x%x\n", g_token.val, g_token.val );
                 exit( 1 );
@@ -660,7 +765,7 @@ int main( int argc, char** argv ) {
     }
     printf( "SYMTABLE:\n" );
     for( int i = 0; i < g_syms; i++ ) {
-        printf( "symtable entry %d: '%s'\n", i, g_symtable[ i ].name );
+        verbose( "\tentry %d: '%s'\n", i, g_symtable[ i ].name );
     }
     printf( "\n\n" );
     return 0;
