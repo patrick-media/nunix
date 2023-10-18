@@ -4,16 +4,15 @@
 #include<stdbool.h>
 #include<ctype.h>
 
-const char* sample_input = "lvr %r1, $0x02 ~~ send to GX registers\n"
-"lvrx %r12, $0x1 ~~ GX reg number\n"
-"sfl %r12, $0x10 ~~ shift left by 16 bits\n"
-"orx %r12, $0x2 ~~ 2 bytes of data\n"
-"lvrx %r15, $0xF0F0 ~~ data to send\n"
-"slvx ($0x200), %r15 ~~ store data\n"
-"lvrx %r13, $0x200 ~~ value for destination to point to\n"
-"int $0x2 ~~ GX interrupt";
-
 #define PAS_VERBOSE
+#define NUM_TOK_STR 60
+#define NUM_REGS 16
+#define MAGIC_INSTR_START 16
+#define NUM_INSTR 47
+#define NUM_XINSTR 27
+#define NUM_MATHINSTR 18
+#define G_SYMTABLE_MAX 512
+#define PROG_BYTES_MAX 64
 
 #ifdef PAS_VERBOSE
 #define verbose( msg, ... ) printf( msg, __VA_ARGS__ );
@@ -21,7 +20,6 @@ const char* sample_input = "lvr %r1, $0x02 ~~ send to GX registers\n"
 #define verbose( msg, ... )
 #endif // PAS_VERBOSE
 
-#define NUM_TOK_STR 60
 const char* tok_e_str[ NUM_TOK_STR ] = { "T_EOF", "T_PERCENT", "T_DOLLAR", "T_COMMA",
                             "T_RBRACKET", "T_LBRACKET", "T_RPAREN", "T_LPAREN", "T_PLUS",
                             "T_MINUS", "T_STAR", "T_SLASH", "T_TILDE", "T_LITERAL",
@@ -32,7 +30,6 @@ const char* tok_e_str[ NUM_TOK_STR ] = { "T_EOF", "T_PERCENT", "T_DOLLAR", "T_CO
                             "T_JPR", "T_JEQ", "T_JLS", "T_JGR", "T_JLE", "T_JGE", "T_JZO", "T_JCR",
                             "T_JNE", "T_COM", "T_COMX", "T_AND", "T_ANDX", "T_OR", "T_ORX", "T_XOR",
                             "T_XORX", "T_SFR", "T_SFRX" };
-#define NUM_REGS 16
 const char* valid_regs[ NUM_REGS ] = { "r0", "r1", "r2", "r3", "r4",
                                         "r5", "r6", "r7", "r8", "r9",
                                         "r10", "r11", "r12", "r13", "r14", "r15", };
@@ -45,16 +42,15 @@ typedef struct {
     // [0] R, [1] RI, [2] IR, [3] I, [4] RDF, [5] IDF, [6] DFR, [7] DFI, [8] DF
     unsigned char opcode[ 9 ];
 } instr_t;
+
 typedef enum {
     FMT_INVL = 0,
     FMT_R =    0b00000001,
     FMT_I =    0b00000010,
     FMT_DF =   0b00000100
 } opcode_fmt_e;
-const char* op_fmt_str[ 4 ] = { "FMT_INVL", "FMT_R", "FMT_I", "FMT_DF" };
 typedef enum {
-    RFMT_INVL = 0,
-    RFMT_R,
+    RFMT_R = 0,
     RFMT_RI,
     RFMT_IR,
     RFMT_I,
@@ -62,14 +58,15 @@ typedef enum {
     RFMT_IDF,
     RFMT_DFR,
     RFMT_DFI,
-    RFMT_DF
+    RFMT_DF,
+    RFMT_INVL
 } opcode_rfmt_e;
-const char* op_rfmt_str[ 9 ] = { "RFMT_INVL", "RFMT_R", "RFMT_RI", "RFMT_IR",
+
+const char* op_fmt_str[ 4 ] = { "FMT_INVL", "FMT_R", "FMT_I", "FMT_DF" };
+const char* op_rfmt_str[ 10 ] = { "RFMT_INVL", "RFMT_R", "RFMT_RI", "RFMT_IR",
                                 "RFMT_I", "RFMT_RDF", "RFMT_IDF", "RFMT_DFR",
                                 "RFMT_DFI", "RFMT_DF" };
 
-#define MAGIC_INSTR_START 16
-#define NUM_INSTR 47
 instr_t instr[ NUM_INSTR ] = {
     // 0 no args
     // 2 one arg
@@ -188,7 +185,6 @@ typedef enum {
     /* 61 */ T_SFRX
 } tok_e;
 
-#define G_SYMTABLE_MAX 512
 struct {
     char* name;
 } g_symtable[ G_SYMTABLE_MAX ];
@@ -607,8 +603,29 @@ int scan( void ) {
     return 1;
 }
 
+bool xinstr( int instr ) {
+    int xinstr_int[ NUM_XINSTR ] =  { T_LVRX, T_ADDX, T_SUBX, T_MULX, T_DIVX, T_LFPX, T_LPIX, T_LPOX,
+                                    T_SLVX, T_VTSX, T_VFSX, T_JMP, T_JPR, T_JEQ, T_JLS, T_JGR, T_JLE,
+                                    T_JGE, T_JZO, T_JCR, T_JNE, T_COMX, T_ANDX, T_ORX, T_XORX, T_SFLX, T_SFRX };
+    for( int i = 0; i < NUM_XINSTR; i++ ) {
+        if( xinstr_int[ i ]-MAGIC_INSTR_START == instr ) {
+            return true;
+        }
+    }
+    return false;
+}
+bool mathinstr( int instr ) {
+    int mathinstr_int[ NUM_MATHINSTR ] = { T_ADD, T_ADDX, T_SUB, T_SUBX, T_MUL, T_MULX, T_DIV, T_DIVX,
+                                            T_AND, T_ANDX, T_OR, T_ORX, T_XOR, T_XORX, T_SFL, T_SFLX,
+                                            T_SFR, T_SFRX };
+    for( int i = 0; i < NUM_MATHINSTR; i++ ) {
+        if( mathinstr_int[ i ]-MAGIC_INSTR_START == instr ) {
+            return true;
+        }
+    }
+}
+
 int main( int argc, char** argv ) {
-    /*
     if( argc != 2 ) {
         printf( "Invalid number of arguments: %d\n", argc );
         exit( 1 );
@@ -618,14 +635,11 @@ int main( int argc, char** argv ) {
         printf( "Failed to open file '%s'.\n", argv[ 1 ] );
         exit( 1 );
     }
-    */
     g_input = calloc( 4096, sizeof( *g_input ) );
     if( !g_input ) {
-        printf( "input failed to allocate.\n" );
+        printf( "g_input failed to allocate.\n" );
         exit( 1 );
     }
-    strcpy( g_input, sample_input );
-    /*
     char file_contents = fgetc( fp );
     int input_i = 0;
     while( file_contents != EOF ) {
@@ -634,9 +648,19 @@ int main( int argc, char** argv ) {
     }
     g_input[ input_i ] = 0;
     fclose( fp );
-    */
 
     int scan_result = scan();
+
+    struct {
+        unsigned char* bytes;
+        int place;
+    } bmap;
+    bmap.place = 0;
+    bmap.bytes = calloc( PROG_BYTES_MAX, sizeof( *bmap.bytes ) );
+    if( !bmap.bytes ) {
+        printf( "bytes_map failed to allocate.\n" );
+        exit( 1 );
+    }
 
     // 0 - instruction
     // 1 - first arg
@@ -645,17 +669,29 @@ int main( int argc, char** argv ) {
     // 4 - comma (if applicable)
     // 5 - third arg
     struct {
-        int isp; // instruction syntax place
-        int isp_max; // max place
+        char isp; // instruction syntax place
+        char isp_max; // max place
         int operand; // operand place
         char fmt_c[ 4 ]; // format
         int fmt_p; // format char place
+        unsigned char instr; // instruction number
+        unsigned int operand_value[ 3 ]; // total amount of literal integers allowed for operands
+        char operand_value_p; // operand value place
+        unsigned char operand_regs[ 3 ]; // total amount of registers allowed for operands
+        char operand_regs_p; // operand regs place
+        char instr_size; // 0 - 16-bit, 1 - 32-bit
     } opcode;
     opcode.isp = 0;
     opcode.isp_max = -1;
     opcode.operand = 0;
     memset( &opcode.fmt_c, 0, 4 );
     opcode.fmt_p = 0;
+    opcode.instr = 0;
+    memset( &opcode.operand_value, 0, 3 );
+    opcode.operand_value_p = 0;
+    memset( &opcode.operand_regs, 0, 3 );
+    opcode.operand_regs_p = 0;
+    opcode.instr_size = 0;
 
     while( scan_result ) {
         bool print_value = false;
@@ -665,14 +701,85 @@ int main( int argc, char** argv ) {
             printf( "Unhandled exception: opcode.operad > 2 token %d (%s)\n", g_token.tok, tok_e_str[ g_token.tok ] );
             exit( 1 );
         }
+        // full operation has been read, reset for new one
         if( opcode.isp == opcode.isp_max ) {
             //printf( "opcode.isp reached max\n" );
             printf( "opcode.fmt_c = %s\n", opcode.fmt_c );
+            switch( opcode.fmt_c[ 0 ] ) {
+                case 'R':
+                {
+                    bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 0 ];
+                    if( opcode.fmt_c[ 1 ] == 'I' ) {
+                        bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_RI ];
+                        if( opcode.instr_size == 1 ) {
+                            // TODO evaluate bytes for 32-bit or 16-bit instructions (padding)
+                        }
+                        //printf( "RI processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RI ] );
+                        break;
+                    }
+                    if( opcode.fmt_c[ 1 ] == 'D' ) {
+                        bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_RDF ];
+                        //printf( "RDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RDF ] );
+                        break;
+                    }
+                    bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_R ];
+                    bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                    if( mathinstr( opcode.instr ) ) {
+                        bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 2 ];
+                    }
+                    //printf( "R processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_R ] );
+                    break;
+                }
+                case 'I':
+                {
+                    if( opcode.fmt_c[ 1 ] == 'R' ) {
+                        bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_IR ];
+                        bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                        //printf( "IR processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
+                        break;
+                    }
+                    if( opcode.fmt_c[ 1 ] == 'D' ) {
+                        bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_IDF ];
+                        //printf( "IDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_IDF ] );
+                        break;
+                    }
+                    bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_I ];
+                    //printf( "I processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_I ] );
+                    break;
+                }
+                case 'D':
+                {
+                    if( opcode.fmt_c[ 2 ] == 'R' ) {
+                        bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_DFR ];
+                        bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                        //printf( "DFR processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_DFR ] );
+                        break;
+                    }
+                    if( opcode.fmt_c[ 2 ] == 'I' ) {
+                        bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_DFI ];
+                        //printf( "DFI processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
+                        break;
+                    }
+                    bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_DF ];
+                    //printf( "DF processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
+                    break;
+                }
+                default:
+                    printf( "Unhandled exception: opcode.fmt_c processing default case.\n" );
+                    exit( 1 );
+            }
+
+            // reset opcode stats
             opcode.isp = 0;
             opcode.isp_max = -1;
             opcode.operand = 0;
             memset( &opcode.fmt_c, 0, 4 );
             opcode.fmt_p = 0;
+            opcode.instr = 0;
+            memset( &opcode.operand_value, 0, 3 );
+            memset( &opcode.operand_regs, 0, 3 );
+            opcode.operand_regs_p = 0;
+            opcode.instr_size = 0;
             printf( "\n" );
             continue;
         }
@@ -691,6 +798,25 @@ int main( int argc, char** argv ) {
                     printf( "Failed to find register.\n" );
                     exit( 1 );
                 }
+                bool found_xinstr = false;
+                if( scan_reg_result > 9 ) {
+                    for( int i = 0; i < NUM_XINSTR; i++ ) {
+                        if( xinstr( opcode.instr ) ) {
+                            found_xinstr = true;
+                            break;
+                        }
+                        //printf( "no %d %d\n", g_xinstr[ i ]-MAGIC_INSTR_START, opcode.instr );
+                    }
+                } else {
+                    found_xinstr = true;
+                }
+                if( !found_xinstr ) {
+                    printf( "Found xinstr %d (%s) with non xreg %d (%s)\n", opcode.instr, instr[ opcode.instr ].name, scan_reg_result, valid_regs[ scan_reg_result ] );
+                    exit( 1 );
+                }
+
+                opcode.operand_regs[ opcode.operand_regs_p++ ] = scan_reg_result;
+
                 verbose( "reg '%s'\n", valid_regs[ scan_reg_result ] );
                 opcode.isp++;
                 break;
@@ -706,6 +832,7 @@ int main( int argc, char** argv ) {
                 print_value = true;
                 print_value_type = 1; // print int lit
                 g_token.val = scan_int( next() );
+                opcode.operand_value[ opcode.operand_value_p++ ] = g_token.val;
                 opcode.isp++;
                 break;
             }
@@ -769,7 +896,13 @@ int main( int argc, char** argv ) {
                         opcode.isp_max = instr[ i ].numargs_syntax;
                         opcode.isp++;
                         l_found = true;
-                        verbose( "instr %s\n", instr[ i ].name );
+                        verbose( "instr %s (%d)\n", instr[ i ].name, instr[ i ].id );
+                        opcode.instr = instr[ i ].id;
+                        for( int i = 0; i < NUM_XINSTR; i++ ) {
+                            if( xinstr( opcode.instr ) ) {
+                                opcode.instr_size = 1;
+                            }
+                        }
                         break;
                     }
                 }
@@ -778,9 +911,6 @@ int main( int argc, char** argv ) {
                 exit( 1 );
             }
         }
-        //printf( "token %s\n", tok_e_str[ g_token.tok ] );
-        //printf( "opcode.isp = %d\n", opcode.isp );
-        //printf( "opcode.isp_max = %d\n", opcode.isp_max );
         if( print_value ) {
             if( print_value_type == 1 ) {
                 verbose( "lit %d | 0x%X\n", g_token.val, g_token.val );
@@ -793,7 +923,6 @@ int main( int argc, char** argv ) {
                 exit( 1 );
             }
         }
-        //printf( "end token\n\n" );
         scan_result = scan();
     }
     printf( "SYMTABLE:\n" );
@@ -801,5 +930,11 @@ int main( int argc, char** argv ) {
         verbose( "\tentry %d: '%s'\n", i, g_symtable[ i ].name );
     }
     printf( "\n\n" );
+
+    for( int i = 0; i < 20; i++ ) {
+        if( bmap.bytes[ i ] < 0x10 ) printf( "0" );
+        printf( "%X ", bmap.bytes[ i ] );
+    }
+    //free( g_input );
     return 0;
 }
