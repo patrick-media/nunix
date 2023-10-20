@@ -72,6 +72,7 @@ instr_t instr[ NUM_INSTR ] = {
     // 2 one arg
     // 4 two args
     // 6 three args
+    // [0] R, [1] RI, [2] IR, [3] I, [4] RDF, [5] IDF, [6] DFR, [7] DFI, [8] DF
     { "lvr",   0, 4, { 0x0, 0x1, 0, 0, 0, 0, 0, 0, 0 } },
     { "lvrx",  1, 4, { 0x80, 0x81, 0, 0, 0, 0, 0, 0, 0 } },
     { "add",   2, 6, { 0x2, 0x3, 0x4, 0x5, 0, 0, 0, 0, 0 } },
@@ -679,7 +680,10 @@ int main( int argc, char** argv ) {
         char operand_value_p; // operand value place
         unsigned char operand_regs[ 3 ]; // total amount of registers allowed for operands
         char operand_regs_p; // operand regs place
-        char instr_size; // 0 - 16-bit, 1 - 32-bit
+        enum {
+            SZ_16 = 0,
+            SZ_32 = 1
+        } instr_size;
     } opcode;
     opcode.isp = 0;
     opcode.isp_max = -1;
@@ -698,7 +702,7 @@ int main( int argc, char** argv ) {
         int print_value_type = 0;
         //printf( "opcode.isp = %d opcode.isp_max = %d\n", opcode.isp, opcode.isp_max );
         if( opcode.operand > 2 ) {
-            printf( "Unhandled exception: opcode.operad > 2 token %d (%s)\n", g_token.tok, tok_e_str[ g_token.tok ] );
+            printf( "Unhandled exception: opcode.operand > 2 token %d (%s)\n", g_token.tok, tok_e_str[ g_token.tok ] );
             exit( 1 );
         }
         // full operation has been read, reset for new one
@@ -708,22 +712,44 @@ int main( int argc, char** argv ) {
             switch( opcode.fmt_c[ 0 ] ) {
                 case 'R':
                 {
-                    bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 0 ];
                     if( opcode.fmt_c[ 1 ] == 'I' ) {
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_RI ];
-                        if( opcode.instr_size == 1 ) {
-                            // TODO evaluate bytes for 32-bit or 16-bit instructions (padding)
+                        bmap.bytes[ bmap.place ] = opcode.operand_regs[ 0 ];
+                        if( mathinstr( opcode.instr ) ) bmap.bytes[ bmap.place ] |= opcode.operand_regs[ 1 ] << 4;
+                        bmap.place++;
+                        if( opcode.instr_size == SZ_32 ) {
+                            unsigned char l_byte_arr32[ 4 ] = { 0 };
+                            l_byte_arr32[ 0 ] = ( opcode.operand_value[ 0 ] & 0xFF000000 ) >> 24;
+                            l_byte_arr32[ 1 ] = ( opcode.operand_value[ 0 ] & 0x00FF0000 ) >> 16;
+                            l_byte_arr32[ 2 ] = ( opcode.operand_value[ 0 ] & 0x0000FF00 ) >> 8;
+                            l_byte_arr32[ 3 ] = opcode.operand_value[ 0 ] & 0x000000FF;
+                            for( int i = 0; i < 4; i++ ) {
+                                bmap.bytes[ bmap.place++ ] = l_byte_arr32[ i ];
+                                //if( l_byte_arr32[ i ] < 0x10 ) printf( "0" );
+                                //printf( "%x ", l_byte_arr32[ i ] );
+                            }
+                        } else {
+                            unsigned char l_byte_arr16[ 2 ] = { 0 };
+                            l_byte_arr16[ 0 ] = ( opcode.operand_value[ 0 ] & 0xFF00 ) >> 8;
+                            l_byte_arr16[ 1 ] = opcode.operand_value[ 0 ] & 0xFF;
+                            for( int i = 0; i < 2; i++ ) {
+                                bmap.bytes[ bmap.place++ ] = l_byte_arr16[ i ];
+                                //if( l_byte_arr16[ i ] < 0x10 ) printf( "0" );
+                                //printf( "%x ", l_byte_arr16[ i ] );
+                            }
                         }
                         //printf( "RI processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RI ] );
                         break;
                     }
                     if( opcode.fmt_c[ 1 ] == 'D' ) {
+                        bmap.place++;
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_RDF ];
                         //printf( "RDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RDF ] );
                         break;
                     }
                     bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_R ];
-                    bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                    bmap.bytes[ bmap.place ] = opcode.operand_regs[ 0 ];
+                    bmap.bytes[ bmap.place++ ] |= opcode.operand_regs[ 1 ] << 4;
                     if( mathinstr( opcode.instr ) ) {
                         bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 2 ];
                     }
@@ -777,6 +803,7 @@ int main( int argc, char** argv ) {
             opcode.fmt_p = 0;
             opcode.instr = 0;
             memset( &opcode.operand_value, 0, 3 );
+            opcode.operand_value_p = 0;
             memset( &opcode.operand_regs, 0, 3 );
             opcode.operand_regs_p = 0;
             opcode.instr_size = 0;
@@ -805,13 +832,12 @@ int main( int argc, char** argv ) {
                             found_xinstr = true;
                             break;
                         }
-                        //printf( "no %d %d\n", g_xinstr[ i ]-MAGIC_INSTR_START, opcode.instr );
                     }
                 } else {
                     found_xinstr = true;
                 }
                 if( !found_xinstr ) {
-                    printf( "Found xinstr %d (%s) with non xreg %d (%s)\n", opcode.instr, instr[ opcode.instr ].name, scan_reg_result, valid_regs[ scan_reg_result ] );
+                    printf( "Found 32-bit instruction 0x%X (%s) with non-32-bit register %d (%s)\n", opcode.instr, instr[ opcode.instr ].name, scan_reg_result, valid_regs[ scan_reg_result ] );
                     exit( 1 );
                 }
 
@@ -931,7 +957,7 @@ int main( int argc, char** argv ) {
     }
     printf( "\n\n" );
 
-    for( int i = 0; i < 20; i++ ) {
+    for( int i = 0; i < 50; i++ ) {
         if( bmap.bytes[ i ] < 0x10 ) printf( "0" );
         printf( "%X ", bmap.bytes[ i ] );
     }
