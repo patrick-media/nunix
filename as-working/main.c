@@ -5,9 +5,11 @@
 #include<ctype.h>
 
 #define PAS_VERBOSE
-#define NUM_TOK_STR 60
+#define NUM_PDECL 5
+#define NUM_ADECL 1
+#define NUM_TOK_STR 62
 #define NUM_REGS 16
-#define MAGIC_INSTR_START 16
+#define MAGIC_INSTR_START 18
 #define NUM_INSTR 47
 #define NUM_XINSTR 27
 #define NUM_MATHINSTR 18
@@ -20,16 +22,19 @@
 #define verbose( msg, ... )
 #endif // PAS_VERBOSE
 
+const char* prepr_perioddecl[] = { "org", "ascii", "byte", "word", "dword" };
+const char* prepr_atdecl[] = { "attribute" };
+
 const char* tok_e_str[ NUM_TOK_STR ] = { "T_EOF", "T_PERCENT", "T_DOLLAR", "T_COMMA",
                             "T_RBRACKET", "T_LBRACKET", "T_RPAREN", "T_LPAREN", "T_PLUS",
-                            "T_MINUS", "T_STAR", "T_SLASH", "T_TILDE", "T_LITERAL",
-                            "T_DFLITERAL", "T_LABEL", "T_LVR", "T_LVRX", "T_ADD", "T_ADDX",
-                            "T_SUB", "T_SUBX", "T_MUL", "T_MULX", "T_DIV", "T_DIVX", "T_LFP",
-                            "T_LFPX", "T_INT", "T_LPI", "T_LPIX", "T_LPO", "T_LPOX", "T_SLV",
-                            "T_SLVX", "T_VTS", "T_VTSX", "T_VFS", "T_VFSX", "T_RET", "T_JMP",
-                            "T_JPR", "T_JEQ", "T_JLS", "T_JGR", "T_JLE", "T_JGE", "T_JZO", "T_JCR",
-                            "T_JNE", "T_COM", "T_COMX", "T_AND", "T_ANDX", "T_OR", "T_ORX", "T_XOR",
-                            "T_XORX", "T_SFR", "T_SFRX" };
+                            "T_MINUS", "T_STAR", "T_SLASH", "T_TILDE", "T_PERIOD", "T_AT",
+                            "T_LITERAL", "T_DFLITERAL", "T_LABEL", "T_LVR", "T_LVRX", "T_ADD",
+                            "T_ADDX", "T_SUB", "T_SUBX", "T_MUL", "T_MULX", "T_DIV", "T_DIVX",
+                            "T_LFP", "T_LFPX", "T_INT", "T_LPI", "T_LPIX", "T_LPO", "T_LPOX",
+                            "T_SLV", "T_SLVX", "T_VTS", "T_VTSX", "T_VFS", "T_VFSX", "T_RET",
+                            "T_JMP", "T_JPR", "T_JEQ", "T_JLS", "T_JGR", "T_JLE", "T_JGE", "T_JZO",
+                            "T_JCR", "T_JNE", "T_COM", "T_COMX", "T_AND", "T_ANDX", "T_OR", "T_ORX",
+                            "T_XOR", "T_XORX", "T_SFR", "T_SFRX" };
 const char* valid_regs[ NUM_REGS ] = { "r0", "r1", "r2", "r3", "r4",
                                         "r5", "r6", "r7", "r8", "r9",
                                         "r10", "r11", "r12", "r13", "r14", "r15", };
@@ -135,55 +140,57 @@ typedef enum {
     /* 10 */ T_STAR,
     /* 11 */ T_SLASH,
     /* 12 */ T_TILDE,
-    /* 13 */ T_LITERAL,
-    /* 14 */ T_LITERALDF,
-    /* 15 */ T_LABEL,
-    /* 16 */ T_LVR,
-    /* 17 */ T_LVRX,
-    /* 18 */ T_ADD,
-    /* 19 */ T_ADDX,
-    /* 20 */ T_SUB,
-    /* 21 */ T_SUBX,
-    /* 22 */ T_MUL,
-    /* 23 */ T_MULX,
-    /* 24 */ T_DIV,
-    /* 25 */ T_DIVX,
-    /* 26 */ T_LFP,
-    /* 27 */ T_LFPX,
-    /* 28 */ T_INT,
-    /* 29 */ T_LPI,
-    /* 30 */ T_LPIX,
-    /* 31 */ T_LPO,
-    /* 32 */ T_LPOX,
-    /* 33 */ T_SLV,
-    /* 34 */ T_SLVX,
-    /* 35 */ T_VTS,
-    /* 36 */ T_VTSX,
-    /* 37 */ T_VFS,
-    /* 38 */ T_VFSX,
-    /* 39 */ T_RET,
-    /* 40 */ T_JMP,
-    /* 41 */ T_JPR,
-    /* 42 */ T_JEQ,
-    /* 43 */ T_JLS,
-    /* 44 */ T_JGR,
-    /* 45 */ T_JLE,
-    /* 46 */ T_JGE,
-    /* 47 */ T_JZO,
-    /* 48 */ T_JCR,
-    /* 49 */ T_JNE,
-    /* 50 */ T_COM,
-    /* 51 */ T_COMX,
-    /* 52 */ T_AND,
-    /* 53 */ T_ANDX,
-    /* 54 */ T_OR,
-    /* 55 */ T_ORX,
-    /* 56 */ T_XOR,
-    /* 57 */ T_XORX,
-    /* 58 */ T_SFL,
-    /* 59 */ T_SFLX,
-    /* 60 */ T_SFR,
-    /* 61 */ T_SFRX
+    /* 13 */ T_PERIOD,
+    /* 14 */ T_AT,
+    /* 15 */ T_LITERAL,
+    /* 16 */ T_LITERALDF,
+    /* 17 */ T_LABEL,
+    /* 18 */ T_LVR,
+    /* 19 */ T_LVRX,
+    /* 20 */ T_ADD,
+    /* 21 */ T_ADDX,
+    /* 22 */ T_SUB,
+    /* 23 */ T_SUBX,
+    /* 24 */ T_MUL,
+    /* 25 */ T_MULX,
+    /* 26 */ T_DIV,
+    /* 27 */ T_DIVX,
+    /* 28 */ T_LFP,
+    /* 29 */ T_LFPX,
+    /* 30 */ T_INT,
+    /* 31 */ T_LPI,
+    /* 32 */ T_LPIX,
+    /* 33 */ T_LPO,
+    /* 34 */ T_LPOX,
+    /* 35 */ T_SLV,
+    /* 36 */ T_SLVX,
+    /* 37 */ T_VTS,
+    /* 38 */ T_VTSX,
+    /* 39 */ T_VFS,
+    /* 40 */ T_VFSX,
+    /* 41 */ T_RET,
+    /* 42 */ T_JMP,
+    /* 43 */ T_JPR,
+    /* 44 */ T_JEQ,
+    /* 45 */ T_JLS,
+    /* 46 */ T_JGR,
+    /* 47 */ T_JLE,
+    /* 48 */ T_JGE,
+    /* 49 */ T_JZO,
+    /* 50 */ T_JCR,
+    /* 51 */ T_JNE,
+    /* 52 */ T_COM,
+    /* 53 */ T_COMX,
+    /* 54 */ T_AND,
+    /* 55 */ T_ANDX,
+    /* 56 */ T_OR,
+    /* 57 */ T_ORX,
+    /* 58 */ T_XOR,
+    /* 59 */ T_XORX,
+    /* 60 */ T_SFL,
+    /* 61 */ T_SFLX,
+    /* 62 */ T_SFR,
+    /* 63 */ T_SFRX
 } tok_e;
 
 struct {
@@ -582,6 +589,12 @@ int scan( void ) {
         case '~':
             g_token.tok = T_TILDE;
             break;
+        case '.':
+            g_token.tok = T_PERIOD;
+            break;
+        case '@':
+            g_token.tok = T_AT;
+            break;
         default:
             if( isalpha( c ) || c == '_' ) {
                 char* tmp = calloc( 128, sizeof( *tmp ) );
@@ -884,6 +897,36 @@ int main( int argc, char** argv ) {
                 putback( c );
                 break;
             }
+            case T_PERIOD:
+                // TODO make global variable containing all pre-processor declarations, stuff like .org or .ascii
+                // TODO process in for loop and take corresponding actions
+                c = next();
+                char* temp = calloc( 32, sizeof( *temp ) );
+                if( !temp ) {
+                    printf( "temp failed to allocate.\n" );
+                    exit( 1 );
+                }
+                int temp_p = 0;
+                while( isalpha( c ) || c == '_' ) {
+                    temp[ temp_p++ ] = c;
+                    c = next();
+                }
+                bool l_found = false;
+                for( int i = 0; i < NUM_PDECL; i++ ) {
+                    if( strcmp( prepr_perioddecl[ i ], temp ) == 0 ) {
+                        printf( "Found pdecl '%s'.\n", prepr_perioddecl[ i ] );
+                        l_found = true;
+                        break;
+                    }
+                }
+                if( !l_found ) {
+                    printf( "Invalid pdecl found: '%s'.\n", temp );
+                    exit( 1 );
+                }
+                break;
+            case T_AT:
+                printf( "Warning: '@' defined attributes are not yet supported.\n" );
+                break;
             case T_LABEL:
                 break;
             case T_LPAREN:
