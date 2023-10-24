@@ -4,7 +4,7 @@
 #include<stdbool.h>
 #include<ctype.h>
 
-#define SCHOOL
+//#define SCHOOL
 
 #ifdef SCHOOL
 const char* sample_input = "lvr %r1, $0x02 ~~ send to GX registers\n"
@@ -38,7 +38,7 @@ const char* sample_input = "lvr %r1, $0x02 ~~ send to GX registers\n"
 const char* prepr_perioddecl[] = { "org", "ascii", "byte", "word", "dword" };
 const char* prepr_atdecl[] = { "attribute" };
 
-const char* tok_e_str[ NUM_TOK_STR ] = { "T_EOF", "T_PERCENT", "T_DOLLAR", "T_COMMA",
+const char* tok_e_str[ NUM_TOK_STR ] = { "T_EOF", "T_PERCENT", "T_DOLLAR", "T_COMMA", 
                             "T_RBRACKET", "T_LBRACKET", "T_RPAREN", "T_LPAREN", "T_PLUS",
                             "T_MINUS", "T_STAR", "T_SLASH", "T_TILDE", "T_PERIOD", "T_AT",
                             "T_LITERAL", "T_DFLITERAL", "T_LABEL", "T_LVR", "T_LVRX", "T_ADD",
@@ -205,6 +205,11 @@ typedef enum {
     /* 62 */ T_SFR,
     /* 63 */ T_SFRX
 } tok_e;
+
+typedef struct {
+    unsigned char* bytes;
+    int place;
+} bmap_t;
 
 struct {
     char* name;
@@ -653,6 +658,19 @@ bool mathinstr( int instr ) {
     return false;
 }
 
+void operand_int( unsigned int op_val, bmap_t *bytesptr, int sz ) {
+    unsigned char* bytes_arr = calloc( sz, sizeof( *bytes_arr ) );
+    if( !bytes_arr ) {
+        printf( "bytes_arr failed to allocate.\n" );
+        exit( 1 );
+    }
+    int i_max = bytesptr->place + sz;
+    for( int i = bytesptr->place, k = sz-1; i < i_max; i++, k-- ) {
+        bytesptr->bytes[ i ] = ( op_val >> ( 8*k ) ) & 0xFF;
+        bytesptr->place++;
+    }
+}
+
 int main( int argc, char** argv ) {
 #ifndef SCHOOL
     if( argc != 2 ) {
@@ -686,10 +704,7 @@ int main( int argc, char** argv ) {
 
     int scan_result = scan();
 
-    struct {
-        unsigned char* bytes;
-        int place;
-    } bmap;
+    bmap_t bmap = { 0 };
     bmap.place = 0;
     bmap.bytes = calloc( PROG_BYTES_MAX, sizeof( *bmap.bytes ) );
     if( !bmap.bytes ) {
@@ -748,28 +763,14 @@ int main( int argc, char** argv ) {
                     if( opcode.fmt_c[ 1 ] == 'I' ) {
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_RI ];
                         bmap.bytes[ bmap.place ] = opcode.operand_regs[ 0 ];
-                        if( mathinstr( opcode.instr ) ) bmap.bytes[ bmap.place ] |= opcode.operand_regs[ 1 ] << 4;
-                        bmap.place++;
+                        if( mathinstr( opcode.instr ) ) {
+                            bmap.bytes[ bmap.place ] <<= 4;
+                            bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                        }
                         if( opcode.instr_size == SZ_32 ) {
-                            unsigned char l_byte_arr32[ 4 ] = { 0 };
-                            l_byte_arr32[ 0 ] = ( opcode.operand_value[ 0 ] & 0xFF000000 ) >> 24;
-                            l_byte_arr32[ 1 ] = ( opcode.operand_value[ 0 ] & 0x00FF0000 ) >> 16;
-                            l_byte_arr32[ 2 ] = ( opcode.operand_value[ 0 ] & 0x0000FF00 ) >> 8;
-                            l_byte_arr32[ 3 ] = opcode.operand_value[ 0 ] & 0x000000FF;
-                            for( int i = 0; i < 4; i++ ) {
-                                bmap.bytes[ bmap.place++ ] = l_byte_arr32[ i ];
-                                //if( l_byte_arr32[ i ] < 0x10 ) printf( "0" );
-                                //printf( "%x ", l_byte_arr32[ i ] );
-                            }
+                            operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( int ) );
                         } else {
-                            unsigned char l_byte_arr16[ 2 ] = { 0 };
-                            l_byte_arr16[ 0 ] = ( opcode.operand_value[ 0 ] & 0xFF00 ) >> 8;
-                            l_byte_arr16[ 1 ] = opcode.operand_value[ 0 ] & 0xFF;
-                            for( int i = 0; i < 2; i++ ) {
-                                bmap.bytes[ bmap.place++ ] = l_byte_arr16[ i ];
-                                //if( l_byte_arr16[ i ] < 0x10 ) printf( "0" );
-                                //printf( "%x ", l_byte_arr16[ i ] );
-                            }
+                            operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( short ) );
                         }
                         //printf( "RI processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RI ] );
                         break;
@@ -777,6 +778,16 @@ int main( int argc, char** argv ) {
                     if( opcode.fmt_c[ 1 ] == 'D' ) {
                         bmap.place++;
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_RDF ];
+                        bmap.bytes[ bmap.place ] = opcode.operand_regs[ 0 ];
+                        if( mathinstr( opcode.instr ) ) {
+                            bmap.bytes[ bmap.place ] <<= 4;
+                            bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                        }
+                        if( opcode.instr_size == SZ_32 ) {
+                            operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( int ) );
+                        } else {
+                            operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( short ) );
+                        }
                         //printf( "RDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RDF ] );
                         break;
                     }
@@ -794,15 +805,18 @@ int main( int argc, char** argv ) {
                     if( opcode.fmt_c[ 1 ] == 'R' ) {
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_IR ];
                         bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                        // TODO handle IR - error check for math instr
                         //printf( "IR processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
                         break;
                     }
                     if( opcode.fmt_c[ 1 ] == 'D' ) {
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_IDF ];
+                        // TODO handle IDF - error check for math instr
                         //printf( "IDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_IDF ] );
                         break;
                     }
                     bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_I ];
+                    // TODO handle I - error check for math instr
                     //printf( "I processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_I ] );
                     break;
                 }
@@ -811,15 +825,18 @@ int main( int argc, char** argv ) {
                     if( opcode.fmt_c[ 2 ] == 'R' ) {
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_DFR ];
                         bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                        // TODO handle DFR - error check for math instr
                         //printf( "DFR processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_DFR ] );
                         break;
                     }
                     if( opcode.fmt_c[ 2 ] == 'I' ) {
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_DFI ];
+                        // TODO handle DFI - error check for math instr
                         //printf( "DFI processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
                         break;
                     }
                     bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_DF ];
+                    // TODO handle DF - error check for math instr
                     //printf( "DF processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
                     break;
                 }
@@ -1010,7 +1027,6 @@ int main( int argc, char** argv ) {
                     if( ( g_token.tok - MAGIC_INSTR_START ) == instr[ i ].id ) {
                         opcode.isp_max = instr[ i ].numargs_syntax;
                         opcode.isp++;
-                        printf( "instr: isp = %d\n", opcode.isp );
                         l_found = true;
                         verbose( "instr %s (%d)\n", instr[ i ].name, instr[ i ].id );
                         opcode.instr = instr[ i ].id;
