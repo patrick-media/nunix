@@ -1,7 +1,7 @@
 lvr %r1, $0x02 ~~ send to GX registers
 lvrx %r12, $0x1 ~~ GX reg number
-sflx %r12, $0x10 ~~ shift left by 16 bits
-orx %r12, $0x2 ~~ 2 bytes of data
+sflx %r12, %r12, $0x10 ~~ shift left by 16 bits
+orx %r12, %r12, $0x2 ~~ 2 bytes of data
 lvrx %r15, $0xF0F0 ~~ data to send
 slvx ($0x200), %r15 ~~ store data
 lvrx %r13, $0x200 ~~ value for destination to point to
