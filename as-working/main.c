@@ -4,6 +4,19 @@
 #include<stdbool.h>
 #include<ctype.h>
 
+#define SCHOOL
+
+#ifdef SCHOOL
+const char* sample_input = "lvr %r1, $0x02 ~~ send to GX registers\n"
+"lvrx %r12, $0x1 ~~ GX reg number\n"
+"sflx %r12, %r12, $0x10 ~~ shift left by 16 bits\n"
+"orx %r12, %r12, $0x2 ~~ 2 bytes of data\n"
+"lvrx %r15, $0xF0F0 ~~ data to send\n"
+"slvx ($0x200), %r15 ~~ store data\n"
+"lvrx %r13, $0x200 ~~ value for destination to point to\n"
+"int $0x2 ~~ GX interrupt";
+#endif // SCHOOL
+
 #define PAS_VERBOSE
 #define NUM_PDECL 5
 #define NUM_ADECL 1
@@ -114,16 +127,16 @@ instr_t instr[ NUM_INSTR ] = {
     { "jne",  33, 2, { 0, 0, 0, 0xF5, 0, 0, 0, 0, 0 } },
     { "com",  34, 4, { 0x20, 0x21, 0x23, 0x24, 0x22, 0x25, 0x26, 0x27, 0x28 } },
     { "comx", 35, 4, { 0xA0, 0xA1, 0xA3, 0xA4, 0xA2, 0xA5, 0xA6, 0xA7, 0xA8 } },
-    { "and",  36, 4, { 0x29, 0x2A, 0x2C, 0x2D, 0x2B, 0x2E, 0x2F, 0x30, 0x31 } },
-    { "andx", 37, 4, { 0xA9, 0xAA, 0xAC, 0xAD, 0xAB, 0xAE, 0xAF, 0xB0, 0xB1 } },
-    { "or",   38, 4, { 0x32, 0x33, 0x35, 0x36, 0x34, 0x37, 0x38, 0x39, 0x3A } },
-    { "orx",  39, 4, { 0xB2, 0xB3, 0xB5, 0xB6, 0xB4, 0xB7, 0xB8, 0xB9, 0xBA } },
-    { "xor",  40, 4, { 0x3B, 0x3C, 0x3E, 0x3F, 0x3D, 0x40, 0x41, 0x42, 0x43 } },
-    { "xorx", 41, 4, { 0xBB, 0xBC, 0xBE, 0xBF, 0xBD, 0xC0, 0xC1, 0xC2, 0xC3 } },
-    { "sfl",  42, 4, { 0x44, 0x45, 0x46, 0x47, 0, 0, 0, 0, 0 } },
-    { "sflx", 43, 4, { 0xC4, 0xC5, 0xC6, 0xC7, 0, 0, 0, 0, 0 } },
-    { "sfr",  44, 4, { 0x48, 0x49, 0x4A, 0x4B, 0, 0, 0, 0, 0 } },
-    { "sfrx", 45, 4, { 0xC8, 0xC9, 0xCA, 0xCB, 0, 0, 0, 0, 0 } }
+    { "and",  36, 6, { 0x29, 0x2A, 0x2C, 0x2D, 0x2B, 0x2E, 0x2F, 0x30, 0x31 } },
+    { "andx", 37, 6, { 0xA9, 0xAA, 0xAC, 0xAD, 0xAB, 0xAE, 0xAF, 0xB0, 0xB1 } },
+    { "or",   38, 6, { 0x32, 0x33, 0x35, 0x36, 0x34, 0x37, 0x38, 0x39, 0x3A } },
+    { "orx",  39, 6, { 0xB2, 0xB3, 0xB5, 0xB6, 0xB4, 0xB7, 0xB8, 0xB9, 0xBA } },
+    { "xor",  40, 6, { 0x3B, 0x3C, 0x3E, 0x3F, 0x3D, 0x40, 0x41, 0x42, 0x43 } },
+    { "xorx", 41, 6, { 0xBB, 0xBC, 0xBE, 0xBF, 0xBD, 0xC0, 0xC1, 0xC2, 0xC3 } },
+    { "sfl",  42, 6, { 0x44, 0x45, 0x46, 0x47, 0, 0, 0, 0, 0 } },
+    { "sflx", 43, 6, { 0xC4, 0xC5, 0xC6, 0xC7, 0, 0, 0, 0, 0 } },
+    { "sfr",  44, 6, { 0x48, 0x49, 0x4A, 0x4B, 0, 0, 0, 0, 0 } },
+    { "sfrx", 45, 6, { 0xC8, 0xC9, 0xCA, 0xCB, 0, 0, 0, 0, 0 } }
 };
 
 typedef enum {
@@ -637,9 +650,11 @@ bool mathinstr( int instr ) {
             return true;
         }
     }
+    return false;
 }
 
 int main( int argc, char** argv ) {
+#ifndef SCHOOL
     if( argc != 2 ) {
         printf( "Invalid number of arguments: %d\n", argc );
         exit( 1 );
@@ -649,11 +664,16 @@ int main( int argc, char** argv ) {
         printf( "Failed to open file '%s'.\n", argv[ 1 ] );
         exit( 1 );
     }
+#endif // SCHOOL
     g_input = calloc( 4096, sizeof( *g_input ) );
     if( !g_input ) {
         printf( "g_input failed to allocate.\n" );
         exit( 1 );
     }
+#ifdef SCHOOL
+    strcpy( g_input, sample_input );
+#endif // SCHOOL
+#ifndef SCHOOL
     char file_contents = fgetc( fp );
     int input_i = 0;
     while( file_contents != EOF ) {
@@ -662,6 +682,7 @@ int main( int argc, char** argv ) {
     }
     g_input[ input_i ] = 0;
     fclose( fp );
+#endif // SCHOOL
 
     int scan_result = scan();
 
@@ -676,12 +697,13 @@ int main( int argc, char** argv ) {
         exit( 1 );
     }
 
-    // 0 - instruction
-    // 1 - first arg
-    // 2 - comma (if applicable)
-    // 3 - second arg
-    // 4 - comma (if applicable)
-    // 5 - third arg
+    // BEFORE the switch block, these apply. after, they are +1
+    // 1 - instruction
+    // 2 - first arg
+    // 3 - comma (if applicable)
+    // 4 - second arg
+    // 5 - comma (if applicable)
+    // 6 - third arg
     struct {
         char isp; // instruction syntax place
         char isp_max; // max place
@@ -713,14 +735,12 @@ int main( int argc, char** argv ) {
     while( scan_result ) {
         bool print_value = false;
         int print_value_type = 0;
-        //printf( "opcode.isp = %d opcode.isp_max = %d\n", opcode.isp, opcode.isp_max );
         if( opcode.operand > 2 ) {
             printf( "Unhandled exception: opcode.operand > 2 token %d (%s)\n", g_token.tok, tok_e_str[ g_token.tok ] );
             exit( 1 );
         }
         // full operation has been read, reset for new one
         if( opcode.isp == opcode.isp_max ) {
-            //printf( "opcode.isp reached max\n" );
             printf( "opcode.fmt_c = %s\n", opcode.fmt_c );
             switch( opcode.fmt_c[ 0 ] ) {
                 case 'R':
@@ -828,7 +848,15 @@ int main( int argc, char** argv ) {
             case T_PERCENT:
             {
                 if( opcode.isp % 2 > 0 ) {
-                    opcode.fmt_c[ opcode.fmt_p++ ] = 'R';
+                    // if math instruction then assume the first
+                    // operand is R automatically
+                    if( mathinstr( opcode.instr ) ) {
+                        if( opcode.isp != 1 ) {
+                            opcode.fmt_c[ opcode.fmt_p++ ] = 'R';
+                        }
+                    } else {
+                        opcode.fmt_c[ opcode.fmt_p++ ] = 'R';
+                    }
                 } else {
                     printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
                     exit( 1 );
@@ -838,18 +866,7 @@ int main( int argc, char** argv ) {
                     printf( "Failed to find register.\n" );
                     exit( 1 );
                 }
-                bool found_xinstr = false;
-                if( scan_reg_result > 9 ) {
-                    for( int i = 0; i < NUM_XINSTR; i++ ) {
-                        if( xinstr( opcode.instr ) ) {
-                            found_xinstr = true;
-                            break;
-                        }
-                    }
-                } else {
-                    found_xinstr = true;
-                }
-                if( !found_xinstr ) {
+                if( scan_reg_result < 10 && xinstr( opcode.instr ) ) {
                     printf( "Found 32-bit instruction 0x%X (%s) with non-32-bit register %d (%s)\n", opcode.instr, instr[ opcode.instr ].name, scan_reg_result, valid_regs[ scan_reg_result ] );
                     exit( 1 );
                 }
@@ -863,7 +880,16 @@ int main( int argc, char** argv ) {
             case T_DOLLAR:
             {
                 if( opcode.isp % 2 > 0 ) {
-                    opcode.fmt_c[ opcode.fmt_p++ ] = 'I';
+                    if( mathinstr( opcode.instr ) ) {
+                        if( opcode.isp == 1 ) {
+                            printf( "Syntax error: found integer literal when expecting destination register.\n" );
+                            exit( 1 );
+                        } else {
+                            opcode.fmt_c[ opcode.fmt_p++ ] = 'I';
+                        }
+                    } else {
+                        opcode.fmt_c[ opcode.fmt_p++ ] = 'I';
+                    }
                 } else {
                     printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
                     exit( 1 );
@@ -898,6 +924,7 @@ int main( int argc, char** argv ) {
                 break;
             }
             case T_PERIOD:
+            {
                 // TODO make global variable containing all pre-processor declarations, stuff like .org or .ascii
                 // TODO process in for loop and take corresponding actions
                 c = next();
@@ -923,17 +950,33 @@ int main( int argc, char** argv ) {
                     printf( "Invalid pdecl found: '%s'.\n", temp );
                     exit( 1 );
                 }
+                free( temp );
                 break;
+            }
             case T_AT:
+            {
                 printf( "Warning: '@' defined attributes are not yet supported.\n" );
                 break;
+            }
             case T_LABEL:
+            {
                 break;
+            }
             case T_LPAREN:
             {
                 if( opcode.isp % 2 > 0 ) {
-                    opcode.fmt_c[ opcode.fmt_p++ ] = 'D';
-                    opcode.fmt_c[ opcode.fmt_p++ ] = 'F';
+                    if( mathinstr( opcode.instr ) ) {
+                        if( opcode.isp == 1 ) {
+                            printf( "Syntax error: found dereferenced pointer literal when expecting destination register.\n" );
+                            exit( 1 );
+                        } else {
+                            opcode.fmt_c[ opcode.fmt_p++ ] = 'D';
+                            opcode.fmt_c[ opcode.fmt_p++ ] = 'F';
+                        }
+                    } else {
+                        opcode.fmt_c[ opcode.fmt_p++ ] = 'D';
+                        opcode.fmt_c[ opcode.fmt_p++ ] = 'F';
+                    }
                 } else {
                     printf( "Invalid isp value %d with token %d (%s).\n", opcode.isp, g_token.tok, tok_e_str[ g_token.tok ] );
                     exit( 1 );
@@ -958,12 +1001,16 @@ int main( int argc, char** argv ) {
             }
             default:
             {
-                //printf( "opcode.isp = %d\n", opcode.isp );
+                if( opcode.isp > 0 ) {
+                    printf( "Syntax error: found instruction within expression.\n" );
+                    exit( 1 );
+                }
                 bool l_found = false;
                 for( int i = 0; i < NUM_INSTR-1; i++ ) {
                     if( ( g_token.tok - MAGIC_INSTR_START ) == instr[ i ].id ) {
                         opcode.isp_max = instr[ i ].numargs_syntax;
                         opcode.isp++;
+                        printf( "instr: isp = %d\n", opcode.isp );
                         l_found = true;
                         verbose( "instr %s (%d)\n", instr[ i ].name, instr[ i ].id );
                         opcode.instr = instr[ i ].id;
@@ -1004,6 +1051,6 @@ int main( int argc, char** argv ) {
         if( bmap.bytes[ i ] < 0x10 ) printf( "0" );
         printf( "%X ", bmap.bytes[ i ] );
     }
-    //free( g_input );
+    free( bmap.bytes );
     return 0;
 }
