@@ -4,7 +4,7 @@
 #include<stdbool.h>
 #include<ctype.h>
 
-//#define SCHOOL
+#define SCHOOL
 
 #ifdef SCHOOL
 const char* sample_input = "lvr %r1, $0x02 ~~ send to GX registers\n"
