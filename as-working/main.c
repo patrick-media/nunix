@@ -739,8 +739,8 @@ int main( int argc, char** argv ) {
                 DF_REG = 0,
                 DF_LIT
             } type; // type of df - register or lit
-            unsigned int value[ 3 ]; // total amount of literal or register df
-        } df;
+            unsigned int value; // register or df lit value
+        } df[ 3 ]; // total amount of df allowed
         char df_p; // operand df place
     } opcode;
     opcode.isp = 0;
@@ -754,8 +754,12 @@ int main( int argc, char** argv ) {
     memset( &opcode.operand_regs, 0, 3 );
     opcode.operand_regs_p = 0;
     opcode.instr_size = 0;
-    opcode.df.type = 0
-    memset( &opcode.df.value, 0, 3 );
+    opcode.df[ 0 ].type = 0;
+    opcode.df[ 0 ].value = 0;
+    opcode.df[ 1 ].type = 0;
+    opcode.df[ 1 ].value = 0;
+    opcode.df[ 2 ].type = 0;
+    opcode.df[ 2 ].value = 0;
     opcode.df_p = 0;
 
     while( scan_result ) {
@@ -768,6 +772,7 @@ int main( int argc, char** argv ) {
         // full operation has been read, reset for new one
         if( opcode.isp == opcode.isp_max ) {
             printf( "opcode.fmt_c = %s\n", opcode.fmt_c );
+            int opcode_sz = opcode.instr_size == SZ_32 ? sizeof( int ) : sizeof( short );
             switch( opcode.fmt_c[ 0 ] ) {
                 case 'R':
                 {
@@ -781,12 +786,8 @@ int main( int argc, char** argv ) {
                             bmap.bytes[ bmap.place ] <<= 4;
                             bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
                         }
-                        // use 32-bit int lit size for xinstr
-                        if( opcode.instr_size == SZ_32 ) {
-                            operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( int ) );
-                        } else {
-                            operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( short ) );
-                        }
+                        // use appropriate int lit size
+                        operand_int( opcode.operand_int[ 0 ], &bmap, opcode_sz );
                         //printf( "RI processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RI ] );
                         break;
                     }
@@ -800,12 +801,8 @@ int main( int argc, char** argv ) {
                             bmap.bytes[ bmap.place ] <<= 4;
                             bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
                         }
-                        // use 32-bit df format for xinstr
-                        if( opcode.instr_size == SZ_32 ) {
-                            operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( int ) );
-                        } else {
-                            operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( short ) );
-                        }
+                        // use appropriate int lit size
+                        operand_int( opcode.operand_value[ 0 ], &bmap, opcode_sz );
                         //printf( "RDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RDF ] );
                         break;
                     }
@@ -826,9 +823,6 @@ int main( int argc, char** argv ) {
                 case 'I':
                 {
                     // use appropriate int length
-                    int sz_intlit;
-                    if( opcode.instr_size == SZ_32 ) sz_intlit = sizeof( int );
-                    else sz_intlit = sizeof( short )
                     if( opcode.fmt_c[ 1 ] == 'R' ) {
                         // instruction opcode
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_IR ];
@@ -837,7 +831,7 @@ int main( int argc, char** argv ) {
                             bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 0 ];
                         }
                         // fist int lit
-                        operand_int( opcode.operand_int[ 0 ], &bmap, sz_intlit );
+                        operand_int( opcode.operand_int[ 0 ], &bmap, opcode_sz );
                         // add register operand
                         // use second regs operand if math instruction
                         if( mathinstr( opcode.instr ) ) {
@@ -858,12 +852,11 @@ int main( int argc, char** argv ) {
                         // first int lit
                         operand_int( opcode.operand_int[ 0 ], &bmap, sz );
                         // second df - treated like an int lit unless register
-                        if( opcode.df.type == DF_REG ) {
-                            // df register
+                        if( opcode.df[ 0 ].type == DF_REG ) {
+                            bmap.bytes[ bmap.place++ ] = opcode.df[ 0 ].value;
                         } else {
-                            // df lit
+                            operand_int( opcode.df[ 0 ].value, &bmap, sz );
                         }
-                        // TODO handle IDF - error check for math instr
                         //printf( "IDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_IDF ] );
                         break;
                     }
@@ -883,10 +876,23 @@ int main( int argc, char** argv ) {
                 }
                 case 'D':
                 {
+                    int l_reg_p = 0;
                     if( opcode.fmt_c[ 2 ] == 'R' ) {
+                        // instruction opcode
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_DFR ];
-                        bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
-                        // TODO handle DFR - error check for math instr
+                        // use reeg as first byte if math instruction
+                        if( mathinstr( opcode.instr ) ) {
+                            bmap.bytes[ bmap.place++ ] = opcode.operand_reg[ l_reg_p++ ];
+                        }
+                        // use df reg format or df lit format
+                        if( opcode.df[ 0 ].type == DF_REG ) {
+                            bmap.bytes[ bmap.place ] = opcode.df[ 0 ].value;
+                            bmap.bytes[ bmap.place ] <<= 4;
+                        } else {
+                            //bmap.bytes[ bmap.place++ ] = opcode.df[ 0 ].value;
+                            operand_int( operand.df[ 0 ].value, &bmap, opcode_sz );
+                        }
+                        bmap.bytes[ bmap.place++ ] |= opcode.operand_reg[ l_reg_p++ ];
                         //printf( "DFR processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_DFR ] );
                         break;
                     }
@@ -896,6 +902,7 @@ int main( int argc, char** argv ) {
                         //printf( "DFI processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
                         break;
                     }
+                    // default case: just df
                     bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_DF ];
                     // TODO handle DF - error check for math instr
                     //printf( "DF processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
@@ -918,8 +925,12 @@ int main( int argc, char** argv ) {
             memset( &opcode.operand_regs, 0, 3 );
             opcode.operand_regs_p = 0;
             opcode.instr_size = 0;
-            opcode.df.type = 0
-            memset( &opcode.df.value, 0, 3 );
+            opcode.df[ 0 ].type = 0;
+            opcode.df[ 0 ].value = 0;
+            opcode.df[ 1 ].type = 0;
+            opcode.df[ 1 ].value = 0;
+            opcode.df[ 2 ].type = 0;
+            opcode.df[ 2 ].value = 0;
             opcode.df_p = 0;
             printf( "\n" );
             continue;
