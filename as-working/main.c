@@ -734,6 +734,13 @@ int main( int argc, char** argv ) {
             SZ_16 = 0,
             SZ_32 = 1
         } instr_size;
+        struct {
+            enum {
+                DF_REG = 0,
+                DF_LIT
+            } type;
+            unsigned long long val;
+        } df;
     } opcode;
     opcode.isp = 0;
     opcode.isp_max = -1;
@@ -746,6 +753,8 @@ int main( int argc, char** argv ) {
     memset( &opcode.operand_regs, 0, 3 );
     opcode.operand_regs_p = 0;
     opcode.instr_size = 0;
+    opcode.df.type = 0;
+    opcode.df.val = 0;
 
     while( scan_result ) {
         bool print_value = false;
@@ -761,12 +770,16 @@ int main( int argc, char** argv ) {
                 case 'R':
                 {
                     if( opcode.fmt_c[ 1 ] == 'I' ) {
+                        // instruction opcode
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_RI ];
+                        // first register
                         bmap.bytes[ bmap.place ] = opcode.operand_regs[ 0 ];
+                        // merge with second register into one byte if math instruction
                         if( mathinstr( opcode.instr ) ) {
                             bmap.bytes[ bmap.place ] <<= 4;
                             bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
                         }
+                        // use 32-bit int lit size for xinstr
                         if( opcode.instr_size == SZ_32 ) {
                             operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( int ) );
                         } else {
@@ -776,13 +789,16 @@ int main( int argc, char** argv ) {
                         break;
                     }
                     if( opcode.fmt_c[ 1 ] == 'D' ) {
-                        bmap.place++;
+                        // instruction opcode
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_RDF ];
+                        // first register
                         bmap.bytes[ bmap.place ] = opcode.operand_regs[ 0 ];
+                        // merge with second register into one byte if math instruction
                         if( mathinstr( opcode.instr ) ) {
                             bmap.bytes[ bmap.place ] <<= 4;
                             bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
                         }
+                        // use 32-bit df format for xinstr
                         if( opcode.instr_size == SZ_32 ) {
                             operand_int( opcode.operand_value[ 0 ], &bmap, sizeof( int ) );
                         } else {
@@ -791,9 +807,14 @@ int main( int argc, char** argv ) {
                         //printf( "RDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_RDF ] );
                         break;
                     }
+                    // default case: all registers
+                    // instruction opcode
                     bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_R ];
+                    // first register
                     bmap.bytes[ bmap.place ] = opcode.operand_regs[ 0 ];
+                    // merge with second register into one byte
                     bmap.bytes[ bmap.place++ ] |= opcode.operand_regs[ 1 ] << 4;
+                    // give final register its own byte if math instruction
                     if( mathinstr( opcode.instr ) ) {
                         bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 2 ];
                     }
@@ -802,21 +823,55 @@ int main( int argc, char** argv ) {
                 }
                 case 'I':
                 {
+                    // use appropriate int length
+                    int sz_intlit;
+                    if( opcode.instr_size == SZ_32 ) sz_intlit = sizeof( int );
+                    else sz_intlit = sizeof( short )
                     if( opcode.fmt_c[ 1 ] == 'R' ) {
+                        // instruction opcode
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_IR ];
-                        bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
-                        // TODO handle IR - error check for math instr
+                        // check for math instr, put register as first byte if so
+                        if( mathinstr( opcode.instr ) ) {
+                            bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 0 ];
+                        }
+                        // fist int lit
+                        operand_int( opcode.operand_int[ 0 ], &bmap, sz_intlit );
+                        // add register operand
+                        // use second regs operand if math instruction
+                        if( mathinstr( opcode.instr ) ) {
+                            bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 1 ];
+                        } else {
+                            bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 0 ];
+                        }
                         //printf( "IR processed: byte = '%x'\n", bmap.bytes[ bmap.place-1 ] );
                         break;
                     }
                     if( opcode.fmt_c[ 1 ] == 'D' ) {
+                        // instruction opcode
                         bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_IDF ];
+                        // put register operand first if math instruction
+                        if( mathinstr( opcode.instr ) ) {
+                            bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 0 ];
+                        }
+                        // first int lit
+                        operand_int( opcode.operand_int[ 0 ], &bmap, sz );
+                        // second df - treated like a lit int
+                        operand_int( opcode.)
                         // TODO handle IDF - error check for math instr
                         //printf( "IDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_IDF ] );
                         break;
                     }
+                    // default case: only int lits
+                    // instruction opcode
                     bmap.bytes[ bmap.place++ ] = instr[ opcode.instr ].opcode[ RFMT_I ];
-                    // TODO handle I - error check for math instr
+                    // add register as first operand if math instruction
+                    if( mathinstr( opcode.instr ) ) {
+                        bmap.bytes[ bmap.place++ ] = opcode.operand_regs[ 0 ];
+                    }
+                    // first int lit
+                    operand_int( opcode.operand_int[ 0 ], &bmap, sz_intlit );
+                    // second int lit
+                    operand_int( opcode.operand_int[ 1 ], &bmap, sz_intlit );
                     //printf( "I processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_I ] );
                     break;
                 }
