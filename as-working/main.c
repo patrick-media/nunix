@@ -738,9 +738,10 @@ int main( int argc, char** argv ) {
             enum {
                 DF_REG = 0,
                 DF_LIT
-            } type;
-            unsigned long long val;
+            } type; // type of df - register or lit
+            unsigned int value[ 3 ]; // total amount of literal or register df
         } df;
+        char df_p; // operand df place
     } opcode;
     opcode.isp = 0;
     opcode.isp_max = -1;
@@ -753,8 +754,9 @@ int main( int argc, char** argv ) {
     memset( &opcode.operand_regs, 0, 3 );
     opcode.operand_regs_p = 0;
     opcode.instr_size = 0;
-    opcode.df.type = 0;
-    opcode.df.val = 0;
+    opcode.df.type = 0
+    memset( &opcode.df.value, 0, 3 );
+    opcode.df_p = 0;
 
     while( scan_result ) {
         bool print_value = false;
@@ -855,8 +857,12 @@ int main( int argc, char** argv ) {
                         }
                         // first int lit
                         operand_int( opcode.operand_int[ 0 ], &bmap, sz );
-                        // second df - treated like a lit int
-                        operand_int( opcode.)
+                        // second df - treated like an int lit unless register
+                        if( opcode.df.type == DF_REG ) {
+                            // df register
+                        } else {
+                            // df lit
+                        }
                         // TODO handle IDF - error check for math instr
                         //printf( "IDF processed: accessing instr %d opcode 0x%X\n", opcode.instr, instr[ opcode.instr ].opcode[ RFMT_IDF ] );
                         break;
@@ -912,6 +918,9 @@ int main( int argc, char** argv ) {
             memset( &opcode.operand_regs, 0, 3 );
             opcode.operand_regs_p = 0;
             opcode.instr_size = 0;
+            opcode.df.type = 0
+            memset( &opcode.df.value, 0, 3 );
+            opcode.df_p = 0;
             printf( "\n" );
             continue;
         }
